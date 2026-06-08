@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 import joblib
 import matplotlib.pyplot as plt
+import re
+
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
 
 # ==================================================
 # PAGE CONFIG
@@ -21,10 +25,45 @@ model = joblib.load("models/sentiment_model.pkl")
 vectorizer = joblib.load("models/tfidf_vectorizer.pkl")
 
 # ==================================================
+# TEXT CLEANING
+# ==================================================
+
+stop_words = set(stopwords.words("english"))
+
+stop_words.discard("not")
+stop_words.discard("no")
+stop_words.discard("nor")
+stop_words.discard("never")
+
+lemmatizer = WordNetLemmatizer()
+
+
+def clean_text(text):
+
+    text = str(text).lower()
+
+    text = re.sub(r"http\S+", "", text)
+
+    text = re.sub(r"@\w+", "", text)
+
+    text = re.sub(r"[^a-zA-Z\s']", " ", text)
+
+    words = text.split()
+
+    words = [
+        lemmatizer.lemmatize(word)
+        for word in words
+        if word not in stop_words
+    ]
+
+    return " ".join(words)
+
+# ==================================================
 # SIDEBAR
 # ==================================================
 
 with st.sidebar:
+
     st.header("⚙️ Dashboard Info")
 
     st.markdown("""
@@ -32,9 +71,9 @@ with st.sidebar:
 
 - **Algorithm:** Logistic Regression
 - **Vectorizer:** TF-IDF
-- **Dataset:** Sentiment140
-- **Training Samples:** 10,000
-- **Accuracy:** 70.75%
+- **Dataset:** Amazon Reviews
+- **Training Samples:** 100,000
+- **Accuracy:** 90.25%
 """)
 
 # ==================================================
@@ -46,9 +85,11 @@ st.title("🤖 AI Sentiment Analyzer")
 st.markdown("""
 Analyze product reviews using Machine Learning and Natural Language Processing.
 
-Predict sentiment for:
-- Individual reviews
-- Bulk CSV files
+### Features
+- Single Review Prediction
+- Batch CSV Analysis
+- Confidence Score
+- Download Results
 """)
 
 # ==================================================
@@ -60,7 +101,7 @@ tab1, tab2 = st.tabs(
 )
 
 # ==================================================
-# TAB 1 - SINGLE REVIEW
+# SINGLE REVIEW
 # ==================================================
 
 with tab1:
@@ -76,7 +117,11 @@ with tab1:
 
         if review.strip():
 
-            review_vector = vectorizer.transform([review])
+            cleaned_review = clean_text(review)
+
+            review_vector = vectorizer.transform(
+                [cleaned_review]
+            )
 
             prediction = model.predict(
                 review_vector
@@ -86,7 +131,7 @@ with tab1:
                 review_vector
             )[0].max()
 
-            if prediction == 0:
+            if prediction == 1:
 
                 st.error(
                     f"😞 Negative Review\n\nConfidence: {confidence:.2%}"
@@ -107,7 +152,7 @@ with tab1:
             )
 
 # ==================================================
-# TAB 2 - CSV ANALYSIS
+# BATCH CSV
 # ==================================================
 
 with tab2:
@@ -130,40 +175,49 @@ with tab2:
             df = pd.read_csv(uploaded_file)
 
         except:
+
             st.warning("""
-            ⚠️ Invalid CSV Format
+⚠️ Invalid CSV Format
 
-            Please upload a CSV file that contains:
+Please upload a CSV file containing:
 
-            • A column named 'review'
-            • Proper CSV formatting
-            • Text reviews only
+• A column named 'review'
+• Proper CSV formatting
+• Text reviews only
 
-            Example:
+Example:
 
-            review
-            I love this product
-            Worst purchase ever
-            Amazing quality
-            """)
+review
+I love this product
+Worst purchase ever
+Amazing quality
+""")
+
             st.stop()
 
         st.write("### Preview")
 
         st.dataframe(
-            df.head()
+            df.head(),
+            use_container_width=True
         )
 
         if "review" not in df.columns:
 
-            st.error(
+            st.warning(
                 "CSV must contain a column named 'review'"
             )
 
         else:
 
+            cleaned_reviews = (
+                df["review"]
+                .astype(str)
+                .apply(clean_text)
+            )
+
             vectors = vectorizer.transform(
-                df["review"].astype(str)
+                cleaned_reviews
             )
 
             predictions = model.predict(
@@ -176,14 +230,10 @@ with tab2:
                 "prediction"
             ].map(
                 {
-                    0: "Negative",
-                    4: "Positive"
+                    1: "Negative",
+                    2: "Positive"
                 }
             )
-
-            # =====================================
-            # METRICS
-            # =====================================
 
             positive_count = (
                 df["prediction"] == "Positive"
@@ -215,10 +265,6 @@ with tab2:
                     negative_count
                 )
 
-            # =====================================
-            # RESULTS
-            # =====================================
-
             st.write(
                 "### Prediction Results"
             )
@@ -227,10 +273,6 @@ with tab2:
                 df,
                 use_container_width=True
             )
-
-            # =====================================
-            # DOWNLOAD BUTTON
-            # =====================================
 
             csv = df.to_csv(
                 index=False
@@ -242,10 +284,6 @@ with tab2:
                 file_name="sentiment_predictions.csv",
                 mime="text/csv"
             )
-
-            # =====================================
-            # PIE CHART
-            # =====================================
 
             st.write(
                 "### 📊 Sentiment Distribution"
@@ -267,4 +305,4 @@ with tab2:
 
             ax.axis("equal")
 
-            st.pyplot(fig)
+            st.pyplot(fig)           

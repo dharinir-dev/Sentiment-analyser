@@ -2,7 +2,7 @@ import joblib
 
 
 from sklearn.metrics import classification_report, confusion_matrix
-
+from sklearn.naive_bayes import MultinomialNB
 
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
@@ -34,11 +34,16 @@ df.columns = [
 df = df[["text", "sentiment"]]
 
 df = df.sample(
-    n=10000,
+    n=100000,
     random_state=42
 )
 
 stop_words = set(stopwords.words("english"))
+
+stop_words.discard("not")
+stop_words.discard("no")
+stop_words.discard("nor")
+stop_words.discard("never")
 
 lemmatizer = WordNetLemmatizer()
 
@@ -70,7 +75,10 @@ X = df["clean_text"]
 y = df["sentiment"]
 
 vectorizer = TfidfVectorizer(
-    max_features=5000
+    max_features=20000,
+    ngram_range=(1, 2),
+    min_df=2,
+    max_df=0.95
 )
 
 X_tfidf = vectorizer.fit_transform(X)
@@ -82,13 +90,17 @@ X_train, X_test, y_train, y_test = train_test_split(
     X_tfidf,
     y,
     test_size=0.2,
-    random_state=42
+    random_state=42,
+    stratify=y
 )
 
 print("Training samples:", X_train.shape[0])
 print("Testing samples:", X_test.shape[0])
 
-model = LogisticRegression(max_iter=1000)
+model = LogisticRegression(
+    max_iter=3000,
+    C=5
+)
 
 model.fit(X_train, y_train)
 
